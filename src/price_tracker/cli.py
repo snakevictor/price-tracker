@@ -1,0 +1,64 @@
+"""Command-line entry point."""
+
+import argparse
+
+from price_tracker.models import Listing
+from price_tracker.scrapers import browser
+from price_tracker.scrapers.amazon import AmazonScraper
+from price_tracker.scrapers.base import ScraperBlocked
+from price_tracker.scrapers.mercadolivre import MercadoLivreScraper
+
+SCRAPERS = {
+    "mercadolivre": MercadoLivreScraper,
+    "amazon": AmazonScraper,
+}
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="price-tracker")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    search = sub.add_parser("search", help="Search marketplaces for a query.")
+    search.add_argument("query")
+    search.add_argument(
+        "--site",
+        default=",".join(SCRAPERS),
+        help="Comma-separated subset of: " + ", ".join(SCRAPERS),
+    )
+    search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--headed", action="store_true", help="Show the browser window.")
+
+    args = parser.parse_args(argv)
+    if args.command == "search":
+        _run_search(args)
+
+
+def _run_search(args: argparse.Namespace) -> None:
+    sites = [s.strip() for s in args.site.split(",") if s.strip()]
+    unknown = [s for s in sites if s not in SCRAPERS]
+    if unknown:
+        raise SystemExit(f"Unknown site(s): {', '.join(unknown)}")
+
+    browser.configure(headless=not args.headed)
+    try:
+        for site in sites:
+            try:
+                listings = SCRAPERS[site]().search(args.query, limit=args.limit)
+            except ScraperBlocked as exc:
+                print(f"\n{site}: blocked — {exc}")
+                continue
+            print(f"\n{site}: {len(listings)} listing(s) for {args.query!r}")
+            for listing in listings:
+                _print_listing(listing)
+    finally:
+        browser.shutdown()
+
+
+def _print_listing(listing: Listing) -> None:
+    price = "—" if listing.price_cents is None else f"R$ {listing.price:.2f}"
+    print(f"  {price:>14}  {listing.title[:70]}")
+    print(f"  {'':>14}  {listing.url}")
+
+
+if __name__ == "__main__":
+    main()
