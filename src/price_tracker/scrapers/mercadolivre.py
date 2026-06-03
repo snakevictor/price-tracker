@@ -3,7 +3,7 @@
 from urllib.parse import quote
 
 from price_tracker.models import Listing
-from price_tracker.scrapers.base import clean_title, load_results, parse_brl
+from price_tracker.scrapers.base import clean_title, load_results, parse_brl, title_matches
 from price_tracker.scrapers.browser import page
 
 _SEARCH_URL = "https://lista.mercadolivre.com.br/"
@@ -46,3 +46,9 @@ class MercadoLivreScraper:
             )
             for card in cards[:limit]
         ]
+
+    def variant_price(self, listing: Listing, targets: list[str]) -> int | None:
+        # Mercado Livre lists each configuration (capacity + colour) as its own
+        # single-price listing, with the attributes in the title — so the title
+        # decides the match and the listing price is that config's price.
+        return listing.price_cents if title_matches(listing, targets) else None

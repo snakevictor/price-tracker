@@ -22,14 +22,29 @@ sudo pacman -S xorg-server-xvfb     # Arch; any distro's Xvfb package works
 ## Usage
 
 ```bash
-uv run price-tracker search "echo dot 5"                 # default: invisible browser
+uv run price-tracker search "echo dot 5"                 # list normalized results
 uv run price-tracker search "echo dot 5" --site amazon --limit 10
 uv run price-tracker search "echo dot 5" --headed        # show the browser window
 uv run price-tracker search "echo dot 5" --headless      # fast, but often blocked
+
+# match attributes and return the cheapest listing that offers that exact config
+uv run price-tracker search "iphone 17 pro" --attr 256gb --attr cor=prata
 ```
 
-Prints the normalized listings (title, price in BRL, URL) per marketplace. Sites
-that serve an anti-bot wall are reported and skipped rather than aborting the run.
+Without `--attr` it prints the normalized listings (title, price in BRL, URL) per
+marketplace. With `--attr` (repeatable, `key=value` or bare `value`) it returns the
+cheapest listing per marketplace that actually offers every requested attribute,
+priced at that variant, plus the global cheapest. Sites that serve an anti-bot wall
+are reported and skipped rather than aborting the run.
+
+### Attribute matching
+
+Values are normalized (accents, units, synonyms) so `256gb`≈`256 GB` and
+`prata`/`silver`≈`Prateado`. A listing is ranked by the price of its **matching
+variant**: Mercado Livre lists each configuration separately (matched from the
+title), while Amazon's capacity is a picker — when the wanted size isn't the
+default the page is opened and the variant selected before reading its price.
+Listings for a different product (e.g. Pro Max when you asked for Pro) are excluded.
 
 ### Anti-bot resilience
 

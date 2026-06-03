@@ -8,6 +8,7 @@ from typing import Protocol
 from patchright.sync_api import Page
 from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from price_tracker.attributes import option_matches
 from price_tracker.models import Listing
 
 
@@ -19,6 +20,16 @@ class MarketplaceScraper(Protocol):
     slug: str
 
     def search(self, query: str, limit: int = 20) -> list[Listing]: ...
+
+    def variant_price(self, listing: Listing, targets: list[str]) -> int | None:
+        """Price (cents) of the variant matching every target, or None if any target
+        isn't available on this listing."""
+        ...
+
+
+def title_matches(listing: Listing, targets: list[str]) -> bool:
+    """True if the listing title already satisfies every target attribute."""
+    return all(option_matches(listing.title, t) for t in targets)
 
 
 def load_results(tab: Page, url: str, results_selector: str, attempts: int = 3) -> None:
