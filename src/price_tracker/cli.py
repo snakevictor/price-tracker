@@ -1,6 +1,8 @@
 """Command-line entry point."""
 
 import argparse
+import random
+import time
 
 from price_tracker.models import Listing
 from price_tracker.scrapers import browser
@@ -26,7 +28,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Comma-separated subset of: " + ", ".join(SCRAPERS),
     )
     search.add_argument("--limit", type=int, default=20)
-    search.add_argument("--headed", action="store_true", help="Show the browser window.")
+    mode = search.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--headed", action="store_const", const="headed", dest="mode",
+        help="Show the browser window (uses your display).",
+    )
+    mode.add_argument(
+        "--headless", action="store_const", const="headless", dest="mode",
+        help="Run headless (fast, but marketplaces may block it).",
+    )
+    search.set_defaults(mode="virtual")
 
     args = parser.parse_args(argv)
     if args.command == "search":
@@ -39,9 +50,11 @@ def _run_search(args: argparse.Namespace) -> None:
     if unknown:
         raise SystemExit(f"Unknown site(s): {', '.join(unknown)}")
 
-    browser.configure(headless=not args.headed)
+    browser.configure(mode=args.mode)
     try:
-        for site in sites:
+        for index, site in enumerate(sites):
+            if index:
+                time.sleep(random.uniform(2, 5))
             try:
                 listings = SCRAPERS[site]().search(args.query, limit=args.limit)
             except ScraperBlocked as exc:

@@ -1,10 +1,12 @@
 """Scraper interface and shared normalization helpers."""
 
+import random
 import re
+import time
 from typing import Protocol
 
-from playwright.sync_api import Page
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from patchright.sync_api import Page
+from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from price_tracker.models import Listing
 
@@ -19,15 +21,28 @@ class MarketplaceScraper(Protocol):
     def search(self, query: str, limit: int = 20) -> list[Listing]: ...
 
 
-def load_results(tab: Page, url: str, results_selector: str, timeout: int = 15000) -> None:
-    """Navigate to a search URL and wait for results, detecting anti-bot walls."""
-    tab.goto(url, wait_until="domcontentloaded", timeout=30000)
-    if "captcha" in tab.url:
-        raise ScraperBlocked(f"anti-bot wall: {tab.url}")
-    try:
-        tab.wait_for_selector(results_selector, timeout=timeout)
-    except PlaywrightTimeoutError:
-        raise ScraperBlocked(f"results did not load; landed on {tab.url}") from None
+def load_results(tab: Page, url: str, results_selector: str, attempts: int = 3) -> None:
+    """Open a search URL and wait for results, with human-like pacing, backoff
+    retries, and anti-bot wall detection."""
+    for attempt in range(attempts):
+        tab.goto(url, wait_until="domcontentloaded", timeout=40000)
+        _settle(tab)
+        if "captcha" not in tab.url:
+            try:
+                tab.wait_for_selector(results_selector, timeout=15000)
+                return
+            except PlaywrightTimeoutError:
+                pass
+        if attempt + 1 < attempts:
+            time.sleep(random.uniform(4, 9) * (attempt + 1))
+    raise ScraperBlocked(f"anti-bot wall or no results after {attempts} tries: {tab.url}")
+
+
+def _settle(tab: Page) -> None:
+    """Brief human-like pause and scroll to trigger lazy loading."""
+    tab.wait_for_timeout(random.uniform(700, 1800))
+    tab.mouse.wheel(0, random.randint(600, 1400))
+    tab.wait_for_timeout(random.uniform(500, 1200))
 
 
 _NUMBER_RE = re.compile(r"[\d.,]+")

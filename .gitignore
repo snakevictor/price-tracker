@@ -37,8 +37,9 @@ dbt/dbt_packages/
 dbt/logs/
 dbt/profiles.yml
 
-# Playwright browsers cache (large, machine-specific)
+# Browser cache + persistent stealth profile (large, machine-specific)
 .cache/ms-playwright/
+.browser-profile/
 
 # Local Postgres data dir (if mounted)
 .postgres-data/

@@ -5,7 +5,7 @@ description = "Multi-marketplace price tracker."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "playwright>=1.48",
+    "patchright>=1.48",
 ]
 
 [project.optional-dependencies]
