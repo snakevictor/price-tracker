@@ -24,8 +24,13 @@ sudo pacman -S xorg-server-xvfb     # Arch; any distro's Xvfb package works
 ```bash
 uv run price-tracker search "echo dot 5"                 # list normalized results
 uv run price-tracker search "echo dot 5" --site amazon --limit 10
-uv run price-tracker search "echo dot 5" --headed        # show the browser window
+uv run price-tracker search "echo dot 5" --headed        # watch it in a real window
 uv run price-tracker search "echo dot 5" --headless      # fast, but often blocked
+
+# make a visible window the default for a session of manual test runs
+export PRICE_TRACKER_MODE=headed
+uv run price-tracker search "echo dot 5"                 # now opens a window
+uv run price-tracker search "echo dot 5" --virtual       # ...override back per-run
 
 # match attributes and return the cheapest listing that offers that exact config
 uv run price-tracker search "iphone 17 pro" --attr 256gb --attr cor=prata

@@ -1,6 +1,7 @@
 """Command-line entry point."""
 
 import argparse
+import os
 import random
 import time
 
@@ -16,6 +17,14 @@ SCRAPERS = {
     "mercadolivre": MercadoLivreScraper,
     "amazon": AmazonScraper,
 }
+
+MODES = ("virtual", "headed", "headless")
+
+
+def _default_mode() -> str:
+    """Default browser mode, overridable via the PRICE_TRACKER_MODE env var."""
+    mode = os.environ.get("PRICE_TRACKER_MODE", "virtual").strip().lower()
+    return mode if mode in MODES else "virtual"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -40,10 +49,14 @@ def main(argv: list[str] | None = None) -> None:
         help="Show the browser window (uses your display).",
     )
     mode.add_argument(
+        "--virtual", action="store_const", const="virtual", dest="mode",
+        help="Invisible browser in a virtual display (default).",
+    )
+    mode.add_argument(
         "--headless", action="store_const", const="headless", dest="mode",
         help="Run headless (fast, but marketplaces may block it).",
     )
-    search.set_defaults(mode="virtual")
+    search.set_defaults(mode=_default_mode())
 
     args = parser.parse_args(argv)
     if args.command == "search":

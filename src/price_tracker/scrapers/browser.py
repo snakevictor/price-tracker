@@ -83,11 +83,11 @@ def _ensure_context():
         "locale": "pt-BR",
         "timezone_id": "America/Sao_Paulo",
     }
-    if not headless:
-        # Force the X11 backend so Chromium uses the X display instead of
-        # auto-selecting Wayland (which it can't reach and won't fall back from).
-        options["args"] = ["--ozone-platform=x11"]
     if browser_env is not None:
+        # Pin Chromium to the Xvfb X11 display; otherwise it auto-selects Wayland,
+        # which the virtual display can't provide, and exits. Headed/headless keep
+        # Chromium's own platform auto-detection (Wayland on a real desktop).
+        options["args"] = ["--ozone-platform=x11"]
         options["env"] = browser_env
     _context = _playwright.chromium.launch_persistent_context(**options)
     return _context

@@ -6,7 +6,6 @@ from price_tracker.attributes import normalize
 from price_tracker.models import Listing
 from price_tracker.scrapers.base import MarketplaceScraper
 
-
 # Model qualifiers that distinguish products; a listing carrying one the query
 # didn't ask for is a different product (Pro vs Pro Max, 17 vs 17 Air).
 _MODEL_QUALIFIERS = {"max", "plus", "ultra", "mini", "se", "lite", "pro", "air"}
