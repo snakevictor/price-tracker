@@ -23,7 +23,12 @@ def _relevant(title: str, query: str) -> bool:
 
 
 def best_match(
-    scraper: MarketplaceScraper, query: str, targets: list[str], limit: int = 12
+    scraper: MarketplaceScraper,
+    query: str,
+    targets: list[str],
+    limit: int = 12,
+    node: str | None = None,
+    new_only: bool = True,
 ) -> Listing | None:
     """Cheapest listing that offers every target attribute, priced at that variant.
 
@@ -33,7 +38,7 @@ def best_match(
     (a listing's chosen-variant price is never below its headline/base price).
     """
     candidates = sorted(
-        scraper.search(query, limit=limit),
+        scraper.search(query, limit=limit, node=node, new_only=new_only),
         key=lambda listing: (listing.price_cents is None, listing.price_cents or 0),
     )
     best: Listing | None = None

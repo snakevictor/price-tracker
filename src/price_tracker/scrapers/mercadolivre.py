@@ -3,7 +3,14 @@
 from urllib.parse import quote
 
 from price_tracker.models import Listing
-from price_tracker.scrapers.base import clean_title, load_results, parse_brl, title_matches
+from price_tracker.scrapers.base import (
+    Category,
+    clean_title,
+    link_href,
+    load_results,
+    parse_brl,
+    title_matches,
+)
 from price_tracker.scrapers.browser import page
 
 _SEARCH_URL = "https://lista.mercadolivre.com.br/"
@@ -29,13 +36,37 @@ _EXTRACT = """
 """
 
 
+def _with_price_sort(url: str) -> str:
+    """Add Mercado Livre's lowest-price sort path segment to a results URL."""
+    base = url.split("#")[0]
+    if "_OrderId_PRICE" in base:
+        return base
+    if "_NoIndex_True" in base:
+        return base.replace("_NoIndex_True", "_OrderId_PRICE_NoIndex_True")
+    return base + "_OrderId_PRICE"
+
+
 class MercadoLivreScraper:
     slug = "mercadolivre"
 
-    def search(self, query: str, limit: int = 20) -> list[Listing]:
-        url = _SEARCH_URL + quote("-".join(query.split()))
+    def category_options(self, query: str, node: str | None = None) -> list[Category]:
+        # Mercado Livre auto-categorizes a query (a precise search lands in one
+        # category), so there is nothing for the user to pick.
+        return []
+
+    def search(
+        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+    ) -> list[Listing]:
+        start = node or _SEARCH_URL + quote("-".join(query.split()))
         with page() as tab:
-            load_results(tab, url, _RESULTS_SELECTOR)
+            load_results(tab, start, _RESULTS_SELECTOR)
+            # Condition + sort live on the categorized "Novo" facet URL; the bare
+            # query URL doesn't accept the sort segment. With used included we keep
+            # the base results and let best_match rank them by price.
+            if new_only:
+                novo = link_href(tab, "Novo")
+                if novo:
+                    load_results(tab, _with_price_sort(novo), _RESULTS_SELECTOR)
             cards = tab.evaluate(_EXTRACT)
         return [
             Listing(

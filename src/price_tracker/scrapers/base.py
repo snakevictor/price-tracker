@@ -3,12 +3,13 @@
 import random
 import re
 import time
+from dataclasses import dataclass
 from typing import Protocol
 
 from patchright.sync_api import Page
 from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from price_tracker.attributes import option_matches
+from price_tracker.attributes import normalize, option_matches
 from price_tracker.models import Listing
 
 
@@ -16,10 +17,25 @@ class ScraperBlocked(RuntimeError):
     """Raised when a marketplace serves an anti-bot wall instead of results."""
 
 
+@dataclass(frozen=True)
+class Category:
+    """A selectable category node; `token` is an opaque per-scraper handle."""
+
+    label: str
+    token: str
+
+
 class MarketplaceScraper(Protocol):
     slug: str
 
-    def search(self, query: str, limit: int = 20) -> list[Listing]: ...
+    def category_options(self, query: str, node: str | None = None) -> list[Category]:
+        """Categories to choose from at the current `node` (None = top level).
+        Empty list means there is nothing further to narrow."""
+        ...
+
+    def search(
+        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+    ) -> list[Listing]: ...
 
     def variant_price(self, listing: Listing, targets: list[str]) -> int | None:
         """Price (cents) of the variant matching every target, or None if any target
@@ -30,6 +46,19 @@ class MarketplaceScraper(Protocol):
 def title_matches(listing: Listing, targets: list[str]) -> bool:
     """True if the listing title already satisfies every target attribute."""
     return all(option_matches(listing.title, t) for t in targets)
+
+
+def link_href(tab: Page, text: str) -> str | None:
+    """Href of the first <a> whose visible text equals `text` (normalized)."""
+    return tab.evaluate(
+        """(target) => {
+            const norm = s => (s||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'')
+              .replace(/\\s+/g,' ').trim().toLowerCase();
+            const a = [...document.querySelectorAll('a')].find(e => norm(e.textContent) === target);
+            return a ? a.href : null;
+        }""",
+        normalize(text),
+    )
 
 
 def load_results(tab: Page, url: str, results_selector: str, attempts: int = 3) -> None:

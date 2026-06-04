@@ -34,6 +34,11 @@ uv run price-tracker search "echo dot 5" --virtual       # ...override back per-
 
 # match attributes and return the cheapest listing that offers that exact config
 uv run price-tracker search "iphone 17 pro" --attr 256gb --attr cor=prata
+
+# pre-pick the category path to skip the interactive prompt; include used units
+uv run price-tracker search "iphone 17 pro" --attr 256gb \
+  --category "Eletrônicos>Celulares e Comunicação>Celulares e Smartphones"
+uv run price-tracker search "iphone 17 pro" --include-used
 ```
 
 Without `--attr` it prints the normalized listings (title, price in BRL, URL) per
@@ -41,6 +46,16 @@ marketplace. With `--attr` (repeatable, `key=value` or bare `value`) it returns 
 cheapest listing per marketplace that actually offers every requested attribute,
 priced at that variant, plus the global cheapest. Sites that serve an anti-bot wall
 are reported and skipped rather than aborting the run.
+
+### Category, condition, and sorting
+
+Each run lets you pick a **category** so unrelated items (phone cases, films) are
+excluded at the source — the scraper presents the marketplace's own categories and
+narrows the search to the one you choose (`--category "A>B>C"` skips the prompt).
+Only **new** listings are returned by default via each platform's own condition
+filter; pass `--include-used` to keep used/refurbished. Results are ordered cheapest
+first using the platform's price sort where it preserves relevance (Mercado Livre),
+and ranked by price in code otherwise (Amazon, whose price sort ignores the query).
 
 ### Attribute matching
 

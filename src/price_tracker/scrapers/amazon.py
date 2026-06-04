@@ -1,14 +1,37 @@
 """Amazon Brazil search scraper."""
 
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote_plus, urlencode, urlparse
 
 from price_tracker.attributes import option_matches
 from price_tracker.models import Listing
-from price_tracker.scrapers.base import clean_title, load_results, parse_brl, title_matches
+from price_tracker.scrapers.base import (
+    Category,
+    clean_title,
+    link_href,
+    load_results,
+    parse_brl,
+    title_matches,
+)
 from price_tracker.scrapers.browser import page
 
 _SEARCH_URL = "https://www.amazon.com.br/s?k="
 _RESULTS_SELECTOR = 'div[data-component-type="s-search-result"]'
+
+# Top-level departments from the search-bar dropdown (level-1 categories).
+_DEPARTMENTS_JS = """
+() => [...document.querySelectorAll('#searchDropdownBox option, #nav-search-dropdown option')]
+  .map(o => ({label:(o.textContent||'').trim(), alias:(o.value||'').replace('search-alias=','')}))
+  .filter(o => o.label && o.alias && o.alias !== 'aps')
+"""
+# In-page "Departamento" refinement links carry a second browse node (…,n:NNN).
+_CATEGORY_LINKS_JS = r"""
+() => [...document.querySelectorAll('#s-refinements a')]
+  .map(a => ({
+    label: (a.textContent || '').replace(/\s+/g, ' ').trim(),
+    href: a.getAttribute('href') || '',
+  }))
+  .filter(x => x.label && /(%2Cn%3A|,n:)\d+/.test(x.href) && !/qualquer/i.test(x.label))
+"""
 
 _DETAIL_SELECTOR = "#productTitle, #corePrice_feature_div"
 _PRICE_JS = """
@@ -58,13 +81,49 @@ _EXTRACT = """
 """
 
 
+def _node_token(href: str) -> str:
+    """Keep only the department (i) and browse-node (rh) params from a refinement href."""
+    q = parse_qs(urlparse(href).query)
+    return urlencode({k: q[k][0] for k in ("i", "rh") if k in q})
+
+
+def _node_url(query: str, node: str | None) -> str:
+    url = _SEARCH_URL + quote_plus(query.strip())
+    return f"{url}&{node}" if node else url
+
+
 class AmazonScraper:
     slug = "amazon"
 
-    def search(self, query: str, limit: int = 20) -> list[Listing]:
-        url = _SEARCH_URL + quote_plus(query.strip())
+    def category_options(self, query: str, node: str | None = None) -> list[Category]:
+        if node is None:
+            with page() as tab:
+                load_results(tab, _node_url(query, None), _RESULTS_SELECTOR)
+                deps = tab.evaluate(_DEPARTMENTS_JS)
+            return [Category(d["label"], f"i={d['alias']}") for d in deps]
         with page() as tab:
-            load_results(tab, url, _RESULTS_SELECTOR)
+            load_results(tab, _node_url(query, node), _RESULTS_SELECTOR)
+            links = tab.evaluate(_CATEGORY_LINKS_JS)
+        seen, options = set(), []
+        for link in links:
+            token = _node_token(link["href"])
+            if token and token not in seen:
+                seen.add(token)
+                options.append(Category(link["label"], token))
+        return options
+
+    def search(
+        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+    ) -> list[Listing]:
+        # Keep Amazon's relevance sort: its price-asc sort ranks the whole category
+        # by price and drops query relevance (returns unrelated cheap phones). The
+        # category node excludes accessories; best_match ranks the rest by price.
+        with page() as tab:
+            load_results(tab, _node_url(query, node), _RESULTS_SELECTOR)
+            if new_only:
+                novo = link_href(tab, "Novo")
+                if novo:
+                    load_results(tab, novo, _RESULTS_SELECTOR)
             cards = tab.evaluate(_EXTRACT)
         return [
             Listing(

@@ -6,11 +6,11 @@ import random
 import time
 
 from price_tracker.analysis import best_match
-from price_tracker.attributes import parse_attr_args
+from price_tracker.attributes import normalize, parse_attr_args
 from price_tracker.models import Listing
 from price_tracker.scrapers import browser
 from price_tracker.scrapers.amazon import AmazonScraper
-from price_tracker.scrapers.base import ScraperBlocked
+from price_tracker.scrapers.base import MarketplaceScraper, ScraperBlocked
 from price_tracker.scrapers.mercadolivre import MercadoLivreScraper
 
 SCRAPERS = {
@@ -43,6 +43,14 @@ def main(argv: list[str] | None = None) -> None:
         "--attr", action="append", metavar="KEY=VALUE",
         help="Required attribute, e.g. --attr 256gb --attr cor=preto. Repeatable.",
     )
+    search.add_argument(
+        "--category", metavar="A>B>C",
+        help="Pre-pick a category path (matched by name) to skip the prompt.",
+    )
+    search.add_argument(
+        "--include-used", action="store_true",
+        help="Include used/refurbished listings (default: new only).",
+    )
     mode = search.add_mutually_exclusive_group()
     mode.add_argument(
         "--headed", action="store_const", const="headed", dest="mode",
@@ -70,53 +78,109 @@ def _run_search(args: argparse.Namespace) -> None:
         raise SystemExit(f"Unknown site(s): {', '.join(unknown)}")
 
     targets = parse_attr_args(args.attr)
+    new_only = not args.include_used
     browser.configure(mode=args.mode)
+    if targets:
+        suffix = "" if new_only else " (incl. used)"
+        print(f"matching {args.query!r} with attributes: {', '.join(targets)}{suffix}")
+
+    overall: Listing | None = None
     try:
-        if targets:
-            _run_match(sites, args, targets)
-        else:
-            _run_list(sites, args)
+        for index, site in enumerate(sites):
+            if index:
+                time.sleep(random.uniform(2, 5))
+            scraper = SCRAPERS[site]()
+            try:
+                node = _resolve_node(scraper, args)
+                if targets:
+                    match = best_match(
+                        scraper, args.query, targets, limit=args.limit, node=node, new_only=new_only
+                    )
+                    overall = _report_match(site, targets, match, overall)
+                else:
+                    listings = scraper.search(
+                        args.query, limit=args.limit, node=node, new_only=new_only
+                    )
+                    print(f"\n{site}: {len(listings)} listing(s) for {args.query!r}")
+                    for listing in listings:
+                        _print_listing(listing)
+            except ScraperBlocked as exc:
+                print(f"\n{site}: blocked — {exc}")
+        if targets and overall is not None:
+            print(f"\nglobal cheapest: {overall.marketplace} — R$ {overall.price:.2f}")
+            print(f"  {overall.url}")
     finally:
         browser.shutdown()
 
 
-def _run_list(sites: list[str], args: argparse.Namespace) -> None:
-    for index, site in enumerate(sites):
-        if index:
-            time.sleep(random.uniform(2, 5))
-        try:
-            listings = SCRAPERS[site]().search(args.query, limit=args.limit)
-        except ScraperBlocked as exc:
-            print(f"\n{site}: blocked — {exc}")
-            continue
-        print(f"\n{site}: {len(listings)} listing(s) for {args.query!r}")
-        for listing in listings:
-            _print_listing(listing)
+def _resolve_node(scraper: MarketplaceScraper, args: argparse.Namespace) -> str | None:
+    """Pick a category node: auto-match a --category path, else prompt; None = no scope."""
+    if args.category:
+        return _resolve_path(scraper, args.query, args.category)
+    return _prompt_category(scraper, args.query)
 
 
-def _run_match(sites: list[str], args: argparse.Namespace, targets: list[str]) -> None:
-    print(f"matching {args.query!r} with attributes: {', '.join(targets)}")
-    overall: Listing | None = None
-    for index, site in enumerate(sites):
-        if index:
-            time.sleep(random.uniform(2, 5))
-        try:
-            match = best_match(SCRAPERS[site](), args.query, targets, limit=args.limit)
-        except ScraperBlocked as exc:
-            print(f"\n{site}: blocked — {exc}")
-            continue
+def _pick(options: list, name: str):
+    """Best category option for a name: exact, then prefix, then substring."""
+    target = normalize(name)
+    for predicate in (
+        lambda label: label == target,
+        lambda label: label.startswith(target),
+        lambda label: target in label,
+    ):
+        match = next((c for c in options if predicate(normalize(c.label))), None)
+        if match is not None:
+            return match
+    return None
+
+
+def _resolve_path(scraper: MarketplaceScraper, query: str, path: str) -> str | None:
+    node = None
+    for segment in (s.strip() for s in path.split(">") if s.strip()):
+        match = _pick(scraper.category_options(query, node), segment)
         if match is None:
-            print(f"\n{site}: no matching listing")
-            continue
-        print(f"\n{site}: cheapest match for [{', '.join(targets)}]")
-        _print_listing(match)
-        if overall is None or (
-            match.price_cents is not None and match.price_cents < overall.price_cents
-        ):
-            overall = match
-    if overall is not None:
-        print(f"\nglobal cheapest: {overall.marketplace} — R$ {overall.price:.2f}")
-        print(f"  {overall.url}")
+            break
+        node = match.token
+    return node
+
+
+def _prompt_category(scraper: MarketplaceScraper, query: str) -> str | None:
+    node, trail = None, []
+    while True:
+        options = scraper.category_options(query, node)
+        if not options:
+            return node
+        crumb = " > ".join(trail) if trail else "top"
+        print(f"\n{scraper.slug} categories ({crumb}):")
+        for i, option in enumerate(options, 1):
+            print(f"  {i}. {option.label}")
+        try:
+            choice = input(f"  pick 1-{len(options)} to drill, Enter to search here: ").strip()
+        except EOFError:
+            return node
+        if not choice:
+            return node
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            chosen = options[int(choice) - 1]
+            node = chosen.token
+            trail.append(chosen.label)
+        else:
+            print("  invalid choice")
+
+
+def _report_match(
+    site: str, targets: list[str], match: Listing | None, overall: Listing | None
+) -> Listing | None:
+    if match is None:
+        print(f"\n{site}: no matching listing")
+        return overall
+    print(f"\n{site}: cheapest match for [{', '.join(targets)}]")
+    _print_listing(match)
+    if overall is None or (
+        match.price_cents is not None and match.price_cents < overall.price_cents
+    ):
+        return match
+    return overall
 
 
 def _print_listing(listing: Listing) -> None:
