@@ -6,7 +6,7 @@ import random
 import time
 
 from price_tracker.analysis import best_match
-from price_tracker.attributes import normalize, parse_attr_args
+from price_tracker.attributes import is_relevant, normalize, parse_attr_args
 from price_tracker.models import Listing
 from price_tracker.scrapers import browser
 from price_tracker.scrapers.amazon import AmazonScraper
@@ -98,9 +98,13 @@ def _run_search(args: argparse.Namespace) -> None:
                     )
                     overall = _report_match(site, targets, match, overall)
                 else:
-                    listings = scraper.search(
-                        args.query, limit=args.limit, node=node, new_only=new_only
-                    )
+                    listings = [
+                        listing
+                        for listing in scraper.search(
+                            args.query, limit=args.limit, node=node, new_only=new_only
+                        )
+                        if is_relevant(listing.title, args.query)
+                    ]
                     print(f"\n{site}: {len(listings)} listing(s) for {args.query!r}")
                     for listing in listings:
                         _print_listing(listing)

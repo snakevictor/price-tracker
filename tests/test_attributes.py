@@ -1,6 +1,12 @@
 import pytest
 
-from price_tracker.attributes import canonical, normalize, option_matches, parse_attr_args
+from price_tracker.attributes import (
+    canonical,
+    is_relevant,
+    normalize,
+    option_matches,
+    parse_attr_args,
+)
 
 
 def test_normalize_strips_accents_and_case():
@@ -52,3 +58,19 @@ def test_parse_attr_args():
 )
 def test_option_matches(label, target, expected):
     assert option_matches(label, target) is expected
+
+
+@pytest.mark.parametrize(
+    "title,expected",
+    [
+        ("Apple iPhone 17 Pro (256 GB) - Prateado", True),
+        ("iPhone 17 Pro 256GB - Laranja-cósmico", True),
+        ("Apple iPhone 17 Pro Max (256 GB) - Prateado", False),  # different model
+        ("Apple iPhone 17 de 512 GB — Preto", False),  # missing "pro"
+        ("Apple iPhone 16e de 128 GB — Preto", False),  # wrong generation
+        ("Smartphone OPPO RENO 14 F 5G 256GB", False),  # different brand
+        ("Capa para iPhone 17 Pro", True),  # same product (accessory handled by category)
+    ],
+)
+def test_is_relevant(title, expected):
+    assert is_relevant(title, "iphone 17 pro") is expected

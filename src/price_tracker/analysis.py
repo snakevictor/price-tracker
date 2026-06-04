@@ -2,24 +2,9 @@
 
 from dataclasses import replace
 
-from price_tracker.attributes import normalize
+from price_tracker.attributes import is_relevant
 from price_tracker.models import Listing
 from price_tracker.scrapers.base import MarketplaceScraper
-
-# Model qualifiers that distinguish products; a listing carrying one the query
-# didn't ask for is a different product (Pro vs Pro Max, 17 vs 17 Air).
-_MODEL_QUALIFIERS = {"max", "plus", "ultra", "mini", "se", "lite", "pro", "air"}
-
-
-def _relevant(title: str, query: str) -> bool:
-    """Keep only listings for the same product: every query token present, and no
-    extra model qualifier the query didn't ask for."""
-    haystack = normalize(title)
-    query_tokens = normalize(query).split()
-    if not all(token in haystack for token in query_tokens):
-        return False
-    extra = (_MODEL_QUALIFIERS & set(haystack.split())) - set(query_tokens)
-    return not extra
 
 
 def best_match(
@@ -43,7 +28,7 @@ def best_match(
     )
     best: Listing | None = None
     for listing in candidates:
-        if not _relevant(listing.title, query):
+        if not is_relevant(listing.title, query):
             continue
         if (
             best is not None

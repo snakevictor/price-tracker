@@ -65,3 +65,20 @@ def option_matches(label: str | None, target: str) -> bool:
     # Left word boundary only: target as a token prefix. Matches adjective colour
     # forms (prata→prateado, azul→azul-profundo) while keeping 8gb out of 128gb.
     return re.search(rf"\b{re.escape(target_c)}", label_c) is not None
+
+
+# Model qualifiers that distinguish products; a title carrying one the query
+# didn't ask for is a different product (Pro vs Pro Max, 17 vs 17 Air).
+_MODEL_QUALIFIERS = {"max", "plus", "ultra", "mini", "se", "lite", "pro", "air", "fe", "neo"}
+
+
+def is_relevant(title: str, query: str) -> bool:
+    """True if a listing title is the same product as the query: every query token
+    present, and no extra model qualifier the query didn't ask for (so a "iphone 17
+    pro" query rejects "iphone 17", "iphone 17 pro max", "Galaxy S25", etc.)."""
+    haystack = normalize(title)
+    haystack_tokens = set(haystack.split())
+    query_tokens = normalize(query).split()
+    if not all(token in haystack for token in query_tokens):
+        return False
+    return not (_MODEL_QUALIFIERS & haystack_tokens) - set(query_tokens)
