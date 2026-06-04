@@ -5,8 +5,8 @@ import os
 import random
 import time
 
-from price_tracker.analysis import best_match
-from price_tracker.attributes import is_relevant, normalize, parse_attr_args
+from price_tracker.analysis import best_match, relevant_listings
+from price_tracker.attributes import normalize, parse_attr_args
 from price_tracker.models import Listing
 from price_tracker.scrapers import browser
 from price_tracker.scrapers.amazon import AmazonScraper
@@ -93,19 +93,13 @@ def _run_search(args: argparse.Namespace) -> None:
             try:
                 node = _resolve_node(scraper, args)
                 if targets:
-                    match = best_match(
-                        scraper, args.query, targets, limit=args.limit, node=node, new_only=new_only
-                    )
+                    match = best_match(scraper, args.query, targets, node=node, new_only=new_only)
                     overall = _report_match(site, targets, match, overall)
                 else:
-                    listings = [
-                        listing
-                        for listing in scraper.search(
-                            args.query, limit=args.limit, node=node, new_only=new_only
-                        )
-                        if is_relevant(listing.title, args.query)
-                    ]
-                    print(f"\n{site}: {len(listings)} listing(s) for {args.query!r}")
+                    listings = relevant_listings(
+                        scraper, args.query, args.limit, node=node, new_only=new_only
+                    )
+                    print(f"\n{site}: {len(listings)} listing(s), cheapest first")
                     for listing in listings:
                         _print_listing(listing)
             except ScraperBlocked as exc:
@@ -118,10 +112,10 @@ def _run_search(args: argparse.Namespace) -> None:
 
 
 def _resolve_node(scraper: MarketplaceScraper, args: argparse.Namespace) -> str | None:
-    """Pick a category node: auto-match a --category path, else prompt; None = no scope."""
-    if args.category:
-        return _resolve_path(scraper, args.query, args.category)
-    return _prompt_category(scraper, args.query)
+    """Scope to a --category path if given; otherwise no scope. Drilling categories
+    costs extra requests that trip Amazon's bot detection, and attribute matching
+    already excludes accessories, so it stays opt-in."""
+    return _resolve_path(scraper, args.query, args.category) if args.category else None
 
 
 def _pick(options: list, name: str):
@@ -146,30 +140,6 @@ def _resolve_path(scraper: MarketplaceScraper, query: str, path: str) -> str | N
             break
         node = match.token
     return node
-
-
-def _prompt_category(scraper: MarketplaceScraper, query: str) -> str | None:
-    node, trail = None, []
-    while True:
-        options = scraper.category_options(query, node)
-        if not options:
-            return node
-        crumb = " > ".join(trail) if trail else "top"
-        print(f"\n{scraper.slug} categories ({crumb}):")
-        for i, option in enumerate(options, 1):
-            print(f"  {i}. {option.label}")
-        try:
-            choice = input(f"  pick 1-{len(options)} to drill, Enter to search here: ").strip()
-        except EOFError:
-            return node
-        if not choice:
-            return node
-        if choice.isdigit() and 1 <= int(choice) <= len(options):
-            chosen = options[int(choice) - 1]
-            node = chosen.token
-            trail.append(chosen.label)
-        else:
-            print("  invalid choice")
 
 
 def _report_match(

@@ -34,7 +34,12 @@ class MarketplaceScraper(Protocol):
         ...
 
     def search(
-        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+        self,
+        query: str,
+        limit: int = 20,
+        node: str | None = None,
+        new_only: bool = True,
+        page_num: int = 1,
     ) -> list[Listing]: ...
 
     def variant_price(self, listing: Listing, targets: list[str]) -> int | None:

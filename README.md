@@ -35,27 +35,28 @@ uv run price-tracker search "echo dot 5" --virtual       # ...override back per-
 # match attributes and return the cheapest listing that offers that exact config
 uv run price-tracker search "iphone 17 pro" --attr 256gb --attr cor=prata
 
-# pre-pick the category path to skip the interactive prompt; include used units
+# optionally scope to a category path; include used units
 uv run price-tracker search "iphone 17 pro" --attr 256gb \
   --category "Eletrônicos>Celulares e Comunicação>Celulares e Smartphones"
 uv run price-tracker search "iphone 17 pro" --include-used
 ```
 
-Without `--attr` it prints the normalized listings (title, price in BRL, URL) per
-marketplace. With `--attr` (repeatable, `key=value` or bare `value`) it returns the
-cheapest listing per marketplace that actually offers every requested attribute,
-priced at that variant, plus the global cheapest. Sites that serve an anti-bot wall
-are reported and skipped rather than aborting the run.
+Without `--attr` it lists the relevant listings cheapest-first. With `--attr`
+(repeatable, `key=value` or bare `value`) it returns the cheapest listing per
+marketplace that actually offers every requested attribute, priced at that variant,
+plus the global cheapest. Anti-bot walls are reported and the site skipped.
 
 ### Category, condition, and sorting
 
-Each run lets you pick a **category** so unrelated items (phone cases, films) are
-excluded at the source — the scraper presents the marketplace's own categories and
-narrows the search to the one you choose (`--category "A>B>C"` skips the prompt).
 Only **new** listings are returned by default via each platform's own condition
-filter; pass `--include-used` to keep used/refurbished. Results are ordered cheapest
-first using the platform's price sort where it preserves relevance (Mercado Livre),
-and ranked by price in code otherwise (Amazon, whose price sort ignores the query).
+filter (`--include-used` to keep used/refurbished). `--category "A>B>C"` optionally
+narrows to a marketplace category, matched by name down the tree; it's opt-in
+because drilling Amazon's category tree costs extra requests that trip its bot
+detection, and with `--attr` it isn't needed (attribute matching already drops
+accessories). Sorting is cheapest-first: Mercado Livre's own price sort keeps query
+relevance, but Amazon's does not (it ranks the whole category by price and buries
+the product), so for Amazon we keep relevance — which front-loads the queried
+product — and rank the matches by price in code.
 
 ### Attribute matching
 

@@ -55,8 +55,17 @@ class MercadoLivreScraper:
         return []
 
     def search(
-        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+        self,
+        query: str,
+        limit: int = 20,
+        node: str | None = None,
+        new_only: bool = True,
+        page_num: int = 1,
     ) -> list[Listing]:
+        # Mercado Livre's price sort keeps query relevance, so the matches are on the
+        # first page; deeper pages aren't needed.
+        if page_num > 1:
+            return []
         start = node or _SEARCH_URL + quote("-".join(query.split()))
         with page() as tab:
             load_results(tab, start, _RESULTS_SELECTOR)

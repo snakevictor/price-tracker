@@ -1,13 +1,12 @@
 """Amazon Brazil search scraper."""
 
-from urllib.parse import parse_qs, quote_plus, urlencode, urlparse
+from urllib.parse import parse_qs, quote_plus, urlencode, urlparse, urlunparse
 
 from price_tracker.attributes import option_matches
 from price_tracker.models import Listing
 from price_tracker.scrapers.base import (
     Category,
     clean_title,
-    link_href,
     load_results,
     parse_brl,
     title_matches,
@@ -81,6 +80,11 @@ _EXTRACT = """
 """
 
 
+# Amazon BR "Novo" condition filter value (a stable platform constant, like the
+# sort key — not a keyword list). Merged into rh so it survives pagination.
+_NOVO_CONDITION = "p_n_condition-type:13862762011"
+
+
 def _node_token(href: str) -> str:
     """Keep only the department (i) and browse-node (rh) params from a refinement href."""
     q = parse_qs(urlparse(href).query)
@@ -90,6 +94,20 @@ def _node_token(href: str) -> str:
 def _node_url(query: str, node: str | None) -> str:
     url = _SEARCH_URL + quote_plus(query.strip())
     return f"{url}&{node}" if node else url
+
+
+def _with_query(url: str, **extra: str) -> str:
+    parts = urlparse(url)
+    params = {k: v[0] for k, v in parse_qs(parts.query).items()}
+    params.update(extra)
+    return urlunparse(parts._replace(query=urlencode(params)))
+
+
+def _add_condition(url: str, condition: str) -> str:
+    parts = urlparse(url)
+    params = {k: v[0] for k, v in parse_qs(parts.query).items()}
+    params["rh"] = f"{params['rh']},{condition}" if params.get("rh") else condition
+    return urlunparse(parts._replace(query=urlencode(params)))
 
 
 class AmazonScraper:
@@ -113,17 +131,23 @@ class AmazonScraper:
         return options
 
     def search(
-        self, query: str, limit: int = 20, node: str | None = None, new_only: bool = True
+        self,
+        query: str,
+        limit: int = 20,
+        node: str | None = None,
+        new_only: bool = True,
+        page_num: int = 1,
     ) -> list[Listing]:
-        # Keep Amazon's relevance sort: its price-asc sort ranks the whole category
-        # by price and drops query relevance (returns unrelated cheap phones). The
-        # category node excludes accessories; best_match ranks the rest by price.
+        # Keep Amazon's relevance sort: it front-loads the actual queried product,
+        # whereas its price-asc sort ranks the whole category by price and buries the
+        # product behind 100+ cheaper phones (unreachable, and the paging flags the
+        # session). best_match sorts the front-loaded matches by price in code.
+        url = _node_url(query, node)
+        if new_only:
+            url = _add_condition(url, _NOVO_CONDITION)
+        url = _with_query(url, page=str(page_num))
         with page() as tab:
-            load_results(tab, _node_url(query, node), _RESULTS_SELECTOR)
-            if new_only:
-                novo = link_href(tab, "Novo")
-                if novo:
-                    load_results(tab, novo, _RESULTS_SELECTOR)
+            load_results(tab, url, _RESULTS_SELECTOR)
             cards = tab.evaluate(_EXTRACT)
         return [
             Listing(
